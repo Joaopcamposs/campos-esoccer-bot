@@ -1,8 +1,11 @@
-"""Scraper totalcorner — stats e over/under de jogadores eSoccer Battle 8min."""
+"""Scraper totalcorner — stats, over/under e resultados eSoccer Battle 8min."""
 
 import logging
+import re
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import httpx
 from bs4 import BeautifulSoup
@@ -53,6 +56,9 @@ class PlayerStats:
             "points": self.points,
         }
 
+
+BRT = ZoneInfo("America/Sao_Paulo")
+SITE_TZ = ZoneInfo("Europe/London")
 
 OVER_THRESHOLDS = [1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5, 10.5]
 
@@ -172,6 +178,112 @@ def _parse_goal_stats(html: str) -> list[PlayerGoalStats]:
     return players
 
 
+_TEAM_PLAYER_RE = re.compile(r"^(.+?)\s*\(([^)]+)\)$")
+_SCORE_RE = re.compile(r"^(\d+)\s*-\s*(\d+)$")
+
+
+@dataclass
+class MatchResult:
+    kickoff_brt: datetime
+    status: str
+    home_team: str
+    home_player: str
+    away_team: str
+    away_player: str
+    home_goals: int
+    away_goals: int
+
+    @property
+    def total_goals(self) -> int:
+        return self.home_goals + self.away_goals
+
+    def to_dict(self) -> dict:
+        return {
+            "kickoff_brt": self.kickoff_brt.isoformat(),
+            "status": self.status,
+            "home_team": self.home_team,
+            "home_player": self.home_player,
+            "away_team": self.away_team,
+            "away_player": self.away_player,
+            "home_goals": self.home_goals,
+            "away_goals": self.away_goals,
+            "total_goals": self.total_goals,
+        }
+
+
+def _parse_team(text: str) -> tuple[str, str] | None:
+    m = _TEAM_PLAYER_RE.match(text.strip())
+    if not m:
+        return None
+    return m.group(1).strip(), m.group(2).strip()
+
+
+def _parse_results(html: str) -> list[MatchResult]:
+    soup = BeautifulSoup(html, "lxml")
+    tables = soup.find_all("table", class_="background_table")
+    if not tables:
+        return []
+
+    table = tables[-1]
+    results: list[MatchResult] = []
+    current_year = datetime.now(BRT).year
+
+    for row in table.find_all("tr"):
+        cells = row.find_all("td")
+        if len(cells) < 5:
+            continue
+
+        date_text = cells[0].get_text(strip=True)
+        if not re.match(r"^\d{2}/\d{2}\s+\d{2}:\d{2}$", date_text):
+            continue
+
+        status_text = cells[1].get_text(strip=True)
+
+        home_parsed = _parse_team(cells[2].get_text(strip=True))
+        away_parsed = _parse_team(cells[4].get_text(strip=True))
+        if not home_parsed or not away_parsed:
+            continue
+
+        score_match = _SCORE_RE.match(cells[3].get_text(strip=True))
+        if not score_match:
+            continue
+
+        try:
+            month_day, time_str = date_text.split()
+            month, day = map(int, month_day.split("/"))
+            hour, minute = map(int, time_str.split(":"))
+
+            kickoff_gmt = datetime(
+                current_year,
+                month,
+                day,
+                hour,
+                minute,
+                tzinfo=SITE_TZ,
+            )
+            kickoff_brt = kickoff_gmt.astimezone(BRT)
+        except ValueError, IndexError:
+            continue
+
+        home_team, home_player = home_parsed
+        away_team, away_player = away_parsed
+
+        results.append(
+            MatchResult(
+                kickoff_brt=kickoff_brt,
+                status=status_text,
+                home_team=home_team,
+                home_player=home_player,
+                away_team=away_team,
+                away_player=away_player,
+                home_goals=int(score_match.group(1)),
+                away_goals=int(score_match.group(2)),
+            )
+        )
+
+    return results
+
+
 async def fetch_player_stats() -> list[PlayerStats]:
     """Estatísticas gerais (W/D/L, GF/GA, médias, pontos)."""
     html = await _fetch_html()
@@ -186,6 +298,16 @@ async def fetch_goal_stats() -> list[PlayerGoalStats]:
     players = _parse_goal_stats(html)
     logger.info("Totalcorner goal stats: %d jogadores", len(players))
     return players
+
+
+async def fetch_results(finished_only: bool = True) -> list[MatchResult]:
+    """Resultados recentes. finished_only=True filtra só jogos com status 'Full'."""
+    html = await _fetch_html()
+    results = _parse_results(html)
+    if finished_only:
+        results = [r for r in results if r.status == "Full"]
+    logger.info("Totalcorner results: %d jogos", len(results))
+    return results
 
 
 def invalidate_cache() -> None:

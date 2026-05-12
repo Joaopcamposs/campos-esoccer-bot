@@ -5,12 +5,15 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.scrapers.totalcorner import (
+    MatchResult,
     PlayerGoalStats,
     PlayerStats,
     _parse_goal_stats,
     _parse_player_stats,
+    _parse_results,
     fetch_goal_stats,
     fetch_player_stats,
+    fetch_results,
     invalidate_cache,
 )
 
@@ -48,6 +51,32 @@ SAMPLE_HTML = """
     <td>2</td><td>Cappo</td><td>40</td><td>3.4</td><td>4.0</td>
     <td>100%</td><td>100%</td><td>95%</td><td>93%</td><td>75%</td>
     <td>55%</td><td>38%</td><td>33%</td><td>20%</td><td>10%</td>
+  </tr>
+</table>
+</body></html>
+"""
+
+RESULTS_HTML = """
+<html><body>
+<table class="table background_table">
+  <tr><td colspan="15">May 2026</td></tr>
+  <tr>
+    <td>05/12 19:51</td><td>Full</td>
+    <td>Germany (Simaponika)</td><td>4 - 3</td><td>Argentina (Kavviro)</td>
+    <td></td><td>1 - 0</td><td>1 - 0</td><td></td><td></td>
+    <td></td><td></td><td>-</td><td>4 - 3</td><td>C.O.L.</td>
+  </tr>
+  <tr>
+    <td>05/12 19:51</td><td>Full</td>
+    <td>England (Nightxx)</td><td>0 - 1</td><td>France (Grellz)</td>
+    <td></td><td>1 - 3</td><td>1 - 3</td><td></td><td></td>
+    <td></td><td></td><td>-</td><td>- 1</td><td>C.O.L.</td>
+  </tr>
+  <tr>
+    <td>05/12 19:59</td><td>06 '</td>
+    <td>Sporting (Kodak)</td><td>2 - 1</td><td>FC Porto (Inquisitor)</td>
+    <td></td><td>0 - 1</td><td>0 - 1</td><td></td><td></td>
+    <td></td><td></td><td>-</td><td>2 - 1</td><td>C.O.L.</td>
   </tr>
 </table>
 </body></html>
@@ -120,6 +149,43 @@ def test_goal_stats_to_dict():
     d = s.to_dict()
     assert d["player"] == "Wboy"
     assert d["over_pcts"]["1.5"] == 100.0
+
+
+def test_parse_results():
+    results = _parse_results(RESULTS_HTML)
+    assert len(results) == 3
+    assert results[0].home_team == "Germany"
+    assert results[0].home_player == "Simaponika"
+    assert results[0].away_player == "Kavviro"
+    assert results[0].home_goals == 4
+    assert results[0].away_goals == 3
+    assert results[0].total_goals == 7
+    assert results[0].status == "Full"
+    assert results[0].kickoff_brt.hour == 15
+    assert results[2].status == "06 '"
+
+
+def test_parse_results_no_table():
+    assert _parse_results(NO_TABLE_HTML) == []
+
+
+def test_match_result_to_dict():
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    r = MatchResult(
+        kickoff_brt=datetime(2026, 5, 12, 16, 51, tzinfo=ZoneInfo("America/Sao_Paulo")),
+        status="Full",
+        home_team="Germany",
+        home_player="Simaponika",
+        away_team="Argentina",
+        away_player="Kavviro",
+        home_goals=4,
+        away_goals=3,
+    )
+    d = r.to_dict()
+    assert d["total_goals"] == 7
+    assert d["home_player"] == "Simaponika"
 
 
 class _FakeResponse:
@@ -195,3 +261,30 @@ async def test_cache_expires():
         await fetch_player_stats()
 
     assert mock_client.get.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_fetch_results_finished_only():
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client.get = AsyncMock(return_value=_FakeResponse(RESULTS_HTML))
+
+    with patch("app.scrapers.totalcorner.httpx.AsyncClient", return_value=mock_client):
+        results = await fetch_results(finished_only=True)
+
+    assert len(results) == 2
+    assert all(r.status == "Full" for r in results)
+
+
+@pytest.mark.asyncio
+async def test_fetch_results_all():
+    mock_client = AsyncMock()
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=False)
+    mock_client.get = AsyncMock(return_value=_FakeResponse(RESULTS_HTML))
+
+    with patch("app.scrapers.totalcorner.httpx.AsyncClient", return_value=mock_client):
+        results = await fetch_results(finished_only=False)
+
+    assert len(results) == 3
