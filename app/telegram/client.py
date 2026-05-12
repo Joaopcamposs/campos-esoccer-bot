@@ -21,7 +21,10 @@ def get_client() -> httpx.AsyncClient:
     """Retorna client HTTP singleton (reutiliza conexões)."""
     global _http_client
     if _http_client is None or _http_client.is_closed:
-        _http_client = httpx.AsyncClient(base_url=BASE_URL, timeout=30.0)
+        _http_client = httpx.AsyncClient(
+            base_url=BASE_URL,
+            timeout=httpx.Timeout(10.0, read=60.0),
+        )
     return _http_client
 
 
