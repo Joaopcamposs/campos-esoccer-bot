@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.scrapers.aceodds import fetch_upcoming_matches
-from app.scrapers.totalcorner import fetch_player_stats
+from app.scrapers.totalcorner import fetch_goal_stats, fetch_player_stats
 from app.telegram.service import edit_by_reference, list_pending, send_and_store
 from infra.config import settings
 from infra.database import get_session
@@ -75,6 +75,20 @@ async def api_player_stats(
 ) -> dict[str, Any]:
     """Estatísticas consolidadas de jogadores (totalcorner, últimas 48h)."""
     stats = await fetch_player_stats()
+    if player:
+        stats = [s for s in stats if player.lower() in s.player.lower()]
+    return {
+        "count": len(stats),
+        "players": [s.to_dict() for s in stats],
+    }
+
+
+@router.get("/goal-stats")
+async def api_goal_stats(
+    player: str | None = None,
+) -> dict[str, Any]:
+    """Estatísticas de gols e porcentagens over (totalcorner, últimas 48h)."""
+    stats = await fetch_goal_stats()
     if player:
         stats = [s for s in stats if player.lower() in s.player.lower()]
     return {
