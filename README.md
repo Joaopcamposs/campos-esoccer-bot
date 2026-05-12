@@ -1,17 +1,16 @@
-# FastAPI Telegram Base
+# eSoccer Battle Bot
 
-Template minimalista para apps de **scraping web + envio/edição de mensagens Telegram**.
-FastAPI + SQLAlchemy 2.0 async + httpx. Sem dependências pesadas de bot.
+Bot automatizado para palpites de **eSoccer Battle 8 minutos** (FIFA). Executa a cada 4 minutos: coleta jogos próximos, gera previsão de gols cruzando dados locais e externos, envia palpite no Telegram e atualiza com resultado final (✅/❌).
 
 ## Stack
 
-- **Python 3.14** / **uv** / **ruff** / **ty**
+- **Python 3.14** / **uv** / **ruff**
 - **FastAPI** com lifespan e uvloop
 - **SQLAlchemy 2.0** async com asyncpg (Postgres)
 - **httpx** como cliente HTTP (Telegram API + scraping)
+- **BeautifulSoup + lxml** para parsing HTML
 - **Docker** multi-stage com limite 256MB RAM
-- **Scheduler** interno para rotinas periódicas
-- **Polling + Webhook** — polling automático em dev, webhook em produção
+- **Scheduler** interno (asyncio) para rotinas periódicas
 
 ## Quick Start
 
@@ -29,35 +28,155 @@ docker compose up postgres -d
 # 4. Rodar app
 make dev
 
-# 5. Testar envio
-curl -X POST "http://localhost:8011/api/send?text=hello&reference_key=test-1"
-
-# 6. Testar edição
-curl -X PUT "http://localhost:8011/api/edit?reference_key=test-1&text=editado"
+# 5. Testar scraping
+curl "http://localhost:8011/api/upcoming"
+curl "http://localhost:8011/api/player-stats"
+curl "http://localhost:8011/api/goal-stats"
+curl "http://localhost:8011/api/results"
 ```
 
-Ou setup automatizado: `make setup` (descobre channel ID, gera secret, testa envio/edição).
+## Como Funciona
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Ciclo a cada 4 minutos                       │
+│                                                                 │
+│  1. Scrap aceodds ──→ jogos próximos 10 min                    │
+│  2. Scrap totalcorner (cache 4min) ──→ stats + over% + results │
+│  3. Motor de palpites ──→ expected goals + linha over           │
+│  4. Envia no Telegram ──→ salva Prediction (match_key único)   │
+│  5. Consulta resultados ──→ edita mensagem com ✅/❌            │
+│  6. Atualiza PlayerLocalStats ──→ alimenta dados locais        │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Fontes de dados
+
+| Fonte | URL | Dados |
+|-------|-----|-------|
+| **aceodds** | `aceodds.com/.../e-soccer-battle-8-minutos-de-jogo.html` | Próximos jogos (hora, times, jogadores) |
+| **totalcorner** | `totalcorner.com/league/view/12995/end/...` | Stats (W/D/L, GF/GA), over% (1.5–10.5), resultados 48h |
+| **banco local** | `player_local_stats` | Stats acumuladas dos jogadores (atualizado a cada resultado) |
+
+### Motor de palpites
+
+Para cada jogador no confronto:
+1. Se tem **20+ jogos** no banco local → usa médias locais
+2. Senão → usa stats externas do totalcorner
+3. Sem dados → fallback conservador (avg 2.8 GF / 2.5 GA)
+
+Cálculo:
+```
+home_expected = (home_avg_gf + away_avg_ga) / 2
+away_expected = (away_avg_gf + home_avg_ga) / 2
+expected_total = home_expected + away_expected
+over_line = int(expected_total - 1) + 0.5  (mínimo 1.5)
+```
+
+### Mensagem no Telegram
+
+```
+E-soccer Battle 8 minutos - LIVE @1.5+
+
+🎯 Grellz (France) vs Simaponika (Germany)
+⚽️ Gols esperado: 5.80
+🥅 Over 4.5 gols
+🕒 14:00
+
+Análise:
+Grellz: [média marcada: 3.60 | média sofrida: 2.40]
+Simaponika: [média marcada: 3.00 | média sofrida: 2.60]
+Frequência de gols acima de 4.5 (75%)
+```
+
+Após resultado:
+```
+...
+Resultado: 3 - 2 (total: 5)
+
+✅
+```
+
+## Estrutura
+
+```
+app/
+  main.py                  → Entry point, lifespan, webhook
+  routes.py                → Endpoints API (/api/*)
+  scheduler.py             → Scheduler asyncio para jobs periódicos
+  prediction.py            → Motor de palpites (cruza dados locais/externos)
+  scrapers/
+    aceodds.py             → Scrap próximos jogos
+    totalcorner.py         → Scrap stats, over%, resultados (cache 4min)
+  jobs/
+    esoccer.py             → Job principal (ciclo completo a cada 4min)
+    example.py             → Job modelo (heartbeat)
+  infra/
+    config.py              → Settings via pydantic-settings (.env)
+    database.py            → Engine async + session factory
+    models.py              → SentMessage, PlayerLocalStats, Prediction
+  telegram/
+    client.py              → Cliente HTTP → Telegram API (retry + HTML)
+    handler.py             → Processa updates (polling ou webhook)
+    polling.py             → Long polling para dev local
+    service.py             → Envio/edição com persistência e status
+tests/                     → Testes unitários (SQLite em memória)
+```
+
+## Endpoints
+
+| Método | Rota | Descrição |
+|--------|------|-----------|
+| `GET` | `/api/health` | Health check |
+| `GET` | `/api/upcoming?window=10` | Próximos jogos eSoccer (BRT) |
+| `GET` | `/api/player-stats?player=Grellz` | Stats consolidadas (totalcorner) |
+| `GET` | `/api/goal-stats?player=Grellz` | Over% por jogador (totalcorner) |
+| `GET` | `/api/results?player=Grellz&finished_only=true` | Resultados recentes |
+| `POST` | `/api/send` | Envia mensagem ao canal |
+| `PUT` | `/api/edit` | Edita mensagem por `reference_key` |
+| `GET` | `/api/pending` | Mensagens pendentes |
+| `POST` | `/webhook/telegram` | Webhook Telegram (interno) |
+
+## Banco de Dados
+
+### PlayerLocalStats
+
+| Campo | Tipo | Descrição |
+|-------|------|-----------|
+| `player` | str (PK) | Nome do jogador |
+| `matches_played` | int | Total de partidas |
+| `goals_for` | int | Gols marcados |
+| `goals_against` | int | Gols sofridos |
+| `wins/draws/losses` | int | Resultados |
+| `avg_goals_for` | property | `goals_for / matches_played` |
+| `avg_goals_against` | property | `goals_against / matches_played` |
+
+### Prediction
+
+| Campo | Tipo | Descrição |
+|-------|------|-----------|
+| `id` | UUID7 | PK |
+| `match_key` | str (unique) | Deduplicação: `YYYYMMDD_HHMM_player1_player2` |
+| `kickoff_brt` | datetime | Horário do jogo (BRT) |
+| `home/away_team` | str | Seleções |
+| `home/away_player` | str | Jogadores |
+| `expected_total_goals` | float | Previsão de gols totais |
+| `over_line` | float | Linha over recomendada |
+| `message_id` | bigint | ID da mensagem no Telegram |
+| `status` | str | `pending` → `done` |
+| `home/away_goals` | int | Resultado real |
+| `success` | bool | `total_goals > over_line` |
 
 ## Variáveis de Ambiente
 
 | Variável | Descrição | Exemplo |
 |----------|-----------|---------|
 | `TELEGRAM_BOT_TOKEN` | Token do @BotFather | `123456:ABC-DEF` |
-| `TELEGRAM_WEBHOOK_SECRET` | Secret para validar webhook | `openssl rand -hex 32` |
+| `TELEGRAM_WEBHOOK_SECRET` | Secret para webhook | `openssl rand -hex 32` |
 | `TELEGRAM_CHANNEL_ID` | ID do canal alvo | `-1001234567890` |
-| `DATABASE_URL` | Connection string Postgres async | `postgresql+asyncpg://app:app@localhost:54311/app` |
-| `TELEGRAM_POLLING` | `true` = polling (dev), `false` = webhook (prod) | `true` |
-| `LOG_LEVEL` | Nível de log (`DEBUG`, `INFO`, `WARNING`, `ERROR`) | `INFO` |
-
-## Endpoints
-
-| Método | Rota | Descrição |
-|--------|------|-----------|
-| `GET` | `/health` | Health check |
-| `POST` | `/webhook/telegram` | Webhook Telegram (interno) |
-| `POST` | `/api/send` | Envia mensagem ao canal (retorna `message_id`, `status`) |
-| `PUT` | `/api/edit` | Edita mensagem por `reference_key` |
-| `GET` | `/api/pending` | Lista mensagens pendentes de atualização |
+| `DATABASE_URL` | Connection string Postgres | `postgresql+asyncpg://app:app@localhost:54311/app` |
+| `TELEGRAM_POLLING` | `true` = polling, `false` = webhook | `true` |
+| `LOG_LEVEL` | Nível de log | `INFO` |
 
 ## Comandos
 
@@ -67,14 +186,12 @@ Ou setup automatizado: `make setup` (descobre channel ID, gera secret, testa env
 | `make dev` | Servidor local com reload (:8011) |
 | `make run` | Servidor produção local (:8011) |
 | `make test` | Testes com coverage |
-| `make lint` | Ruff + ty check |
+| `make lint` | Ruff check |
 | `make format` | Auto-format com ruff |
-| `make setup` | Setup completo (bot + banco + validação) |
-| `make validate` | Testa envio/edição com dados mock |
 | `make up` | Docker compose up |
 | `make down` | Docker compose down |
 | `make clean` | Remove volumes e cache |
-| `make deploy` | Deploy via FastAPI Cloud |
+| `make resetdb` | Recria banco do zero |
 
 ## Testes
 
@@ -82,14 +199,4 @@ Ou setup automatizado: `make setup` (descobre channel ID, gera secret, testa env
 make test
 ```
 
-Testes rodam em **SQLite em memória** — banco Postgres nunca é tocado. Telegram API mockada via `unittest.mock`. Coverage 90%+.
-
-## Como Usar
-
-Ver [ARCHITECTURE.md](ARCHITECTURE.md) para:
-- Polling vs Webhook (quando usar qual)
-- Fluxo completo de scraping → envio → edição
-- Como criar jobs periódicos (scheduler)
-- Como adicionar novos scrapers, models, endpoints e comandos do bot
-- Logging (o que cada módulo loga)
-- Deploy (FastAPI Cloud + Docker)
+Testes rodam em **SQLite em memória** — Postgres nunca é tocado. Telegram API mockada. Scrapers testados com HTML fixture.

@@ -32,8 +32,6 @@ async def test_sent_message_nullable_reference(db_session):
     db_session.add(msg)
     await db_session.commit()
 
-    result = await db_session.execute(
-        select(SentMessage).where(SentMessage.chat_id == 111)
-    )
+    result = await db_session.execute(select(SentMessage).where(SentMessage.chat_id == 111))
     record = result.scalar_one()
     assert record.reference_key is None

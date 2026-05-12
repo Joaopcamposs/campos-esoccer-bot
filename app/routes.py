@@ -5,6 +5,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.jobs.esoccer import send_predictions, simulate_e2e, update_results
 from app.scrapers.aceodds import fetch_upcoming_matches
 from app.scrapers.totalcorner import fetch_goal_stats, fetch_player_stats, fetch_results
 from app.telegram.service import edit_by_reference, list_pending, send_and_store
@@ -112,6 +113,36 @@ async def api_results(
     return {
         "count": len(results),
         "results": [r.to_dict() for r in results],
+    }
+
+
+@router.post("/predictions/send")
+async def api_send_predictions(window: int = 10) -> dict[str, Any]:
+    """Força envio de palpites dos próximos jogos."""
+    sent = await send_predictions(window_minutes=window)
+    return {
+        "sent_count": len(sent),
+        "predictions": sent,
+    }
+
+
+@router.post("/predictions/update")
+async def api_update_results() -> dict[str, Any]:
+    """Força atualização de resultados dos palpites pendentes."""
+    updated = await update_results()
+    return {
+        "updated_count": len(updated),
+        "results": updated,
+    }
+
+
+@router.post("/predictions/simulate")
+async def api_simulate_e2e(limit: int = 5) -> dict[str, Any]:
+    """Teste e2e: pega resultados reais, gera palpites, envia e atualiza."""
+    results = await simulate_e2e(limit=limit)
+    return {
+        "count": len(results),
+        "results": results,
     }
 
 

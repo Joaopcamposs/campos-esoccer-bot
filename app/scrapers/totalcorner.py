@@ -23,7 +23,7 @@ HEADERS = {
     "Accept-Language": "en-US,en;q=0.9",
 }
 
-CACHE_TTL = 240
+CACHE_TTL = 30
 
 _cache_html: str | None = None
 _cache_ts: float = 0.0
