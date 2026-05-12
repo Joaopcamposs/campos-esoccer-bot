@@ -136,9 +136,7 @@ async def fetch_upcoming_matches(window_minutes: int = 5) -> list[Match]:
             continue
 
         hour, minute = map(int, time_text.split(":"))
-        kickoff = current_date.replace(
-            hour=hour, minute=minute, second=0, microsecond=0
-        )
+        kickoff = current_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
         if kickoff < now or kickoff > cutoff:
             continue
@@ -162,7 +160,5 @@ async def fetch_upcoming_matches(window_minutes: int = 5) -> list[Match]:
             )
         )
 
-    logger.info(
-        "Encontrados %d jogos nos próximos %d min", len(matches), window_minutes
-    )
+    logger.info("Encontrados %d jogos nos próximos %d min", len(matches), window_minutes)
     return matches
