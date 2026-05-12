@@ -1,0 +1,47 @@
+[project]
+name = "fastapi-telegram-base"
+version = "0.1.0"
+description = "Base minimalista FastAPI + Telegram Bot com webhook interno"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.34.0",
+    "sqlalchemy[asyncio]>=2.0.40",
+    "asyncpg>=0.30.0",
+    "httpx>=0.28.0",
+    "pydantic-settings>=2.9.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=1.0.0",
+    "pytest-cov>=6.0",
+    "httpx>=0.28.0",
+    "ruff>=0.11.0",
+    "ty>=0.0.1a10",
+    "aiosqlite>=0.22.1",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+pythonpath = ["app"]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "RUF"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "infra"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["app"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
