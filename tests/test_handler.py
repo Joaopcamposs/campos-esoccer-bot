@@ -1,6 +1,6 @@
 """Testes do handler de webhook."""
 
-from app.telegram.handler import handle_update
+from telegram.handler import handle_update
 
 
 async def test_handle_start(mock_telegram):

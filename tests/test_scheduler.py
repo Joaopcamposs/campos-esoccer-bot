@@ -2,7 +2,7 @@
 
 import asyncio
 
-from app.scheduler import _jobs, _tasks, register, start_all, stop_all
+from scheduler import _jobs, _tasks, register, start_all, stop_all
 
 
 async def test_register_and_run():

@@ -3,12 +3,12 @@
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
+from jobs.esoccer import send_predictions, simulate_e2e, update_results
+from scrapers.aceodds import fetch_upcoming_matches
+from scrapers.totalcorner import fetch_goal_stats, fetch_player_stats, fetch_results
 from sqlalchemy.ext.asyncio import AsyncSession
+from telegram.service import edit_by_reference, list_pending, send_and_store
 
-from app.jobs.esoccer import send_predictions, simulate_e2e, update_results
-from app.scrapers.aceodds import fetch_upcoming_matches
-from app.scrapers.totalcorner import fetch_goal_stats, fetch_player_stats, fetch_results
-from app.telegram.service import edit_by_reference, list_pending, send_and_store
 from infra.config import settings
 from infra.database import get_session
 

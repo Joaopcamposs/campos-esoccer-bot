@@ -3,8 +3,7 @@
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
-from app.scrapers.totalcorner import (
+from scrapers.totalcorner import (
     MatchResult,
     PlayerGoalStats,
     PlayerStats,
@@ -211,7 +210,7 @@ async def test_fetch_player_stats():
     mock_client.__aexit__ = AsyncMock(return_value=False)
     mock_client.get = AsyncMock(return_value=_FakeResponse(SAMPLE_HTML))
 
-    with patch("app.scrapers.totalcorner.httpx.AsyncClient", return_value=mock_client):
+    with patch("scrapers.totalcorner.httpx.AsyncClient", return_value=mock_client):
         players = await fetch_player_stats()
 
     assert len(players) == 2
@@ -225,7 +224,7 @@ async def test_fetch_goal_stats():
     mock_client.__aexit__ = AsyncMock(return_value=False)
     mock_client.get = AsyncMock(return_value=_FakeResponse(SAMPLE_HTML))
 
-    with patch("app.scrapers.totalcorner.httpx.AsyncClient", return_value=mock_client):
+    with patch("scrapers.totalcorner.httpx.AsyncClient", return_value=mock_client):
         stats = await fetch_goal_stats()
 
     assert len(stats) == 2
@@ -239,7 +238,7 @@ async def test_cache_reuses_html():
     mock_client.__aexit__ = AsyncMock(return_value=False)
     mock_client.get = AsyncMock(return_value=_FakeResponse(SAMPLE_HTML))
 
-    with patch("app.scrapers.totalcorner.httpx.AsyncClient", return_value=mock_client):
+    with patch("scrapers.totalcorner.httpx.AsyncClient", return_value=mock_client):
         await fetch_player_stats()
         await fetch_goal_stats()
 
@@ -254,8 +253,8 @@ async def test_cache_expires():
     mock_client.get = AsyncMock(return_value=_FakeResponse(SAMPLE_HTML))
 
     with (
-        patch("app.scrapers.totalcorner.httpx.AsyncClient", return_value=mock_client),
-        patch("app.scrapers.totalcorner.time.monotonic", side_effect=[0, 300]),
+        patch("scrapers.totalcorner.httpx.AsyncClient", return_value=mock_client),
+        patch("scrapers.totalcorner.time.monotonic", side_effect=[0, 300]),
     ):
         await fetch_player_stats()
         await fetch_player_stats()
@@ -270,7 +269,7 @@ async def test_fetch_results_finished_only():
     mock_client.__aexit__ = AsyncMock(return_value=False)
     mock_client.get = AsyncMock(return_value=_FakeResponse(RESULTS_HTML))
 
-    with patch("app.scrapers.totalcorner.httpx.AsyncClient", return_value=mock_client):
+    with patch("scrapers.totalcorner.httpx.AsyncClient", return_value=mock_client):
         results = await fetch_results(finished_only=True)
 
     assert len(results) == 2
@@ -284,7 +283,7 @@ async def test_fetch_results_all():
     mock_client.__aexit__ = AsyncMock(return_value=False)
     mock_client.get = AsyncMock(return_value=_FakeResponse(RESULTS_HTML))
 
-    with patch("app.scrapers.totalcorner.httpx.AsyncClient", return_value=mock_client):
+    with patch("scrapers.totalcorner.httpx.AsyncClient", return_value=mock_client):
         results = await fetch_results(finished_only=False)
 
     assert len(results) == 3

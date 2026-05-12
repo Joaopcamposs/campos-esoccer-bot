@@ -4,8 +4,7 @@ from datetime import datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
-
-from app.scrapers.aceodds import (
+from scrapers.aceodds import (
     BRT,
     Match,
     _parse_date_header,
@@ -84,8 +83,8 @@ async def test_fetch_upcoming_matches_filters_by_window():
     mock_client.get = AsyncMock(return_value=_FakeResponse())
 
     with (
-        patch("app.scrapers.aceodds.httpx.AsyncClient", return_value=mock_client),
-        patch("app.scrapers.aceodds.datetime") as mock_dt,
+        patch("scrapers.aceodds.httpx.AsyncClient", return_value=mock_client),
+        patch("scrapers.aceodds.datetime") as mock_dt,
     ):
         mock_dt.now.return_value = fixed_now
         mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)
@@ -108,8 +107,8 @@ async def test_fetch_no_matches_outside_window():
     mock_client.get = AsyncMock(return_value=_FakeResponse())
 
     with (
-        patch("app.scrapers.aceodds.httpx.AsyncClient", return_value=mock_client),
-        patch("app.scrapers.aceodds.datetime") as mock_dt,
+        patch("scrapers.aceodds.httpx.AsyncClient", return_value=mock_client),
+        patch("scrapers.aceodds.datetime") as mock_dt,
     ):
         mock_dt.now.return_value = fixed_now
         mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)

@@ -4,13 +4,13 @@ import logging
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+from prediction import generate_prediction
+from scheduler import register
+from scrapers.aceodds import fetch_upcoming_matches
+from scrapers.totalcorner import fetch_results
 from sqlalchemy import select
+from telegram import client
 
-from app.prediction import generate_prediction
-from app.scheduler import register
-from app.scrapers.aceodds import fetch_upcoming_matches
-from app.scrapers.totalcorner import fetch_results
-from app.telegram import client
 from infra.config import settings
 from infra.database import async_session
 from infra.models import PlayerLocalStats, Prediction
@@ -238,7 +238,7 @@ async def simulate_e2e(limit: int = 5) -> list[dict]:
     if not results:
         return []
 
-    from app.scrapers.aceodds import Match
+    from scrapers.aceodds import Match
 
     chat_id = settings.telegram_channel_id
     if not chat_id:

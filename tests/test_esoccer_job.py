@@ -3,7 +3,7 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from app.jobs.esoccer import _format_brt_time, _make_match_key
+from jobs.esoccer import _format_brt_time, _make_match_key
 
 BRT = ZoneInfo("America/Sao_Paulo")
 

@@ -3,16 +3,16 @@
 import logging
 from dataclasses import dataclass
 
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.scrapers.aceodds import Match
-from app.scrapers.totalcorner import (
+from scrapers.aceodds import Match
+from scrapers.totalcorner import (
     PlayerGoalStats,
     PlayerStats,
     fetch_goal_stats,
     fetch_player_stats,
 )
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from infra.models import PlayerLocalStats
 
 logger = logging.getLogger(__name__)

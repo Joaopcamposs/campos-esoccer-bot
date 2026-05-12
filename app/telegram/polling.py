@@ -3,8 +3,8 @@
 import asyncio
 import logging
 
-from app.telegram import client
-from app.telegram.handler import handle_update
+from telegram import client
+from telegram.handler import handle_update
 
 logger = logging.getLogger(__name__)
 

@@ -2,7 +2,7 @@
 
 import logging
 
-from app.scheduler import register
+from scheduler import register
 
 logger = logging.getLogger(__name__)
 

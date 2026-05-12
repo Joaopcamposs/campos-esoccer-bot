@@ -5,14 +5,13 @@ from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
 import pytest
-
-from app.prediction import (
+from prediction import (
     PredictionResult,
     _pick_over_line,
     generate_prediction,
 )
-from app.scrapers.aceodds import Match
-from app.scrapers.totalcorner import PlayerGoalStats, PlayerStats
+from scrapers.aceodds import Match
+from scrapers.totalcorner import PlayerGoalStats, PlayerStats
 
 BRT = ZoneInfo("America/Sao_Paulo")
 
@@ -55,8 +54,8 @@ async def test_generate_prediction_external():
     mock_session.execute.return_value = mock_result
 
     with (
-        patch("app.prediction.fetch_player_stats", return_value=ext_stats),
-        patch("app.prediction.fetch_goal_stats", return_value=goal_stats),
+        patch("prediction.fetch_player_stats", return_value=ext_stats),
+        patch("prediction.fetch_goal_stats", return_value=goal_stats),
     ):
         pred = await generate_prediction(mock_session, match)
 
@@ -80,8 +79,8 @@ async def test_generate_prediction_default_fallback():
     mock_session.execute.return_value = mock_result
 
     with (
-        patch("app.prediction.fetch_player_stats", return_value=[]),
-        patch("app.prediction.fetch_goal_stats", return_value=[]),
+        patch("prediction.fetch_player_stats", return_value=[]),
+        patch("prediction.fetch_goal_stats", return_value=[]),
     ):
         pred = await generate_prediction(mock_session, match)
 

@@ -2,7 +2,7 @@
 
 from unittest.mock import MagicMock
 
-from app.telegram import client
+from telegram import client
 
 
 async def test_send_message(mock_telegram):

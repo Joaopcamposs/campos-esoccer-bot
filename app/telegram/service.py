@@ -4,8 +4,8 @@ import logging
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from telegram import client
 
-from app.telegram import client
 from infra.models import SentMessage
 
 logger = logging.getLogger(__name__)

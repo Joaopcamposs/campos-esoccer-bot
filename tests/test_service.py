@@ -1,14 +1,14 @@
 """Testes do serviço de envio/edição com persistência."""
 
 from sqlalchemy import select
-
-from app.telegram.service import (
+from telegram.service import (
     edit_by_reference,
     list_pending,
     mark_error,
     send_and_store,
     send_photo_and_store,
 )
+
 from infra.models import SentMessage
 
 

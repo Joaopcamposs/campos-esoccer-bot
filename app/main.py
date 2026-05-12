@@ -1,19 +1,24 @@
 """Ponto de entrada — FastAPI com lifespan e webhook Telegram."""
 
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
 import asyncio
 import hmac
 import logging
 from contextlib import asynccontextmanager
 from typing import Any
 
+import jobs  # noqa: F401
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from routes import router as aux_routes
+from scheduler import start_all, stop_all
+from telegram import client
+from telegram.handler import handle_update
+from telegram.polling import polling_loop
 
-import app.jobs
-from app.routes import router as aux_routes
-from app.scheduler import start_all, stop_all
-from app.telegram import client
-from app.telegram.handler import handle_update
-from app.telegram.polling import polling_loop
 from infra.config import settings
 from infra.database import engine
 from infra.models import Base

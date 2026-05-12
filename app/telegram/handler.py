@@ -3,7 +3,7 @@
 import logging
 from typing import Any
 
-from app.telegram import client
+from telegram import client
 
 logger = logging.getLogger(__name__)
 
