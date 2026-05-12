@@ -1,7 +1,7 @@
 [project]
-name = "fastapi-telegram-base"
+name = "campos-esoccer-bot"
 version = "0.1.0"
-description = "Base minimalista FastAPI + Telegram Bot com webhook interno"
+description = "Bot para análise e palpites de gols em jogos eSoccer Battle 8min"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
@@ -11,6 +11,8 @@ dependencies = [
     "asyncpg>=0.30.0",
     "httpx>=0.28.0",
     "pydantic-settings>=2.9.0",
+    "beautifulsoup4>=4.14.3",
+    "lxml>=6.1.0",
 ]
 
 [dependency-groups]
