@@ -42,26 +42,18 @@ class SentMessage(TimestampMixin, Base):
     reference_key: Mapped[str | None] = mapped_column(index=True, default=None)
 
 
-class PlayerLocalStats(TimestampMixin, Base):
-    """Estatísticas locais acumuladas por jogador."""
+class PlayerMatch(TimestampMixin, Base):
+    """Registro individual de partida por jogador."""
 
-    __tablename__ = "player_local_stats"
+    __tablename__ = "player_matches"
 
-    player: Mapped[str] = mapped_column(String(100), primary_key=True)
-    matches_played: Mapped[int] = mapped_column(Integer, default=0)
-    goals_for: Mapped[int] = mapped_column(Integer, default=0)
-    goals_against: Mapped[int] = mapped_column(Integer, default=0)
-    wins: Mapped[int] = mapped_column(Integer, default=0)
-    draws: Mapped[int] = mapped_column(Integer, default=0)
-    losses: Mapped[int] = mapped_column(Integer, default=0)
-
-    @property
-    def avg_goals_for(self) -> float:
-        return self.goals_for / self.matches_played if self.matches_played else 0.0
-
-    @property
-    def avg_goals_against(self) -> float:
-        return self.goals_against / self.matches_played if self.matches_played else 0.0
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid7)
+    player: Mapped[str] = mapped_column(String(100), index=True)
+    opponent: Mapped[str] = mapped_column(String(100))
+    goals_for: Mapped[int] = mapped_column(Integer)
+    goals_against: Mapped[int] = mapped_column(Integer)
+    kickoff: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    match_key: Mapped[str] = mapped_column(String(200), index=True)
 
 
 class Prediction(TimestampMixin, Base):

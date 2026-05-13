@@ -46,14 +46,10 @@ async def test_generate_prediction_external():
         PlayerGoalStats("Simaponika", 50, 3.0, 2.6, {"4.5": 70.0, "5.5": 50.0}),
     ]
 
-    from unittest.mock import MagicMock
-
     mock_session = AsyncMock()
-    mock_result = MagicMock()
-    mock_result.scalar_one_or_none.return_value = None
-    mock_session.execute.return_value = mock_result
 
     with (
+        patch("prediction._get_local_avg", return_value=None),
         patch("prediction.fetch_player_stats", return_value=ext_stats),
         patch("prediction.fetch_goal_stats", return_value=goal_stats),
     ):
@@ -68,22 +64,16 @@ async def test_generate_prediction_external():
 
 
 @pytest.mark.asyncio
-async def test_generate_prediction_default_fallback():
+async def test_generate_prediction_no_data_returns_none():
     match = _make_match()
 
-    from unittest.mock import MagicMock
-
     mock_session = AsyncMock()
-    mock_result = MagicMock()
-    mock_result.scalar_one_or_none.return_value = None
-    mock_session.execute.return_value = mock_result
 
     with (
+        patch("prediction._get_local_avg", return_value=None),
         patch("prediction.fetch_player_stats", return_value=[]),
         patch("prediction.fetch_goal_stats", return_value=[]),
     ):
         pred = await generate_prediction(mock_session, match)
 
-    assert pred.home_avg_gf == 2.8
-    assert pred.away_avg_gf == 2.8
-    assert "default" in pred.source
+    assert pred is None

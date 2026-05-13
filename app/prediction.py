@@ -10,14 +10,14 @@ from scrapers.totalcorner import (
     fetch_goal_stats,
     fetch_player_stats,
 )
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from infra.models import PlayerLocalStats
+from infra.models import PlayerMatch
 
 logger = logging.getLogger(__name__)
 
-MIN_LOCAL_MATCHES = 20
+LOCAL_THRESHOLDS = [20, 10]
 
 
 @dataclass
@@ -33,10 +33,26 @@ class PredictionResult:
     source: str
 
 
-async def _get_local_stats(session: AsyncSession, player: str) -> PlayerLocalStats | None:
-    stmt = select(PlayerLocalStats).where(PlayerLocalStats.player == player)
-    result = await session.execute(stmt)
-    return result.scalar_one_or_none()
+async def _get_local_avg(
+    session: AsyncSession, player: str, last_n: int = 20
+) -> tuple[float, float, int] | None:
+    """Retorna (avg_gf, avg_ga, count) das últimas N partidas do jogador."""
+    subq = (
+        select(PlayerMatch.goals_for, PlayerMatch.goals_against)
+        .where(PlayerMatch.player == player)
+        .order_by(PlayerMatch.kickoff.desc())
+        .limit(last_n)
+        .subquery()
+    )
+    stmt = select(
+        func.avg(subq.c.goals_for),
+        func.avg(subq.c.goals_against),
+        func.count(),
+    )
+    row = (await session.execute(stmt)).one()
+    if row[2] == 0:
+        return None
+    return (float(row[0]), float(row[1]), row[2])
 
 
 def _find_external_stats(
@@ -83,49 +99,44 @@ def _get_over_pct(
     return sum(pcts) / len(pcts)
 
 
+async def _resolve_player_stats(
+    session: AsyncSession, player: str, ext_stats: list[PlayerStats]
+) -> tuple[float, float, str] | None:
+    """Tenta local (20 → 10) depois externo. None se sem dados."""
+    for n in LOCAL_THRESHOLDS:
+        local = await _get_local_avg(session, player, last_n=n)
+        if local and local[2] >= n:
+            return local[0], local[1], f"local({local[2]})"
+
+    ext = _find_external_stats(player, ext_stats)
+    if ext:
+        return ext.avg_goals_for, ext.avg_goals_against, "external"
+
+    logger.warning("Sem dados para %s — sem local nem externo", player)
+    return None
+
+
 async def generate_prediction(
     session: AsyncSession,
     match: Match,
-) -> PredictionResult:
-    """Gera palpite pra uma partida cruzando dados locais e externos."""
-    home_local = await _get_local_stats(session, match.home_player)
-    away_local = await _get_local_stats(session, match.away_player)
-
-    use_local_home = home_local and home_local.matches_played >= MIN_LOCAL_MATCHES
-    use_local_away = away_local and away_local.matches_played >= MIN_LOCAL_MATCHES
-
+) -> PredictionResult | None:
+    """Gera palpite pra uma partida cruzando dados locais e externos. None se sem dados."""
     ext_player_stats = await fetch_player_stats()
     ext_goal_stats = await fetch_goal_stats()
 
-    if use_local_home:
-        home_avg_gf = home_local.avg_goals_for
-        home_avg_ga = home_local.avg_goals_against
-        source_home = "local"
-    else:
-        ext = _find_external_stats(match.home_player, ext_player_stats)
-        if ext:
-            home_avg_gf = ext.avg_goals_for
-            home_avg_ga = ext.avg_goals_against
-            source_home = "external"
-        else:
-            home_avg_gf = 2.8
-            home_avg_ga = 2.5
-            source_home = "default"
+    home_result = await _resolve_player_stats(
+        session, match.home_player, ext_player_stats
+    )
+    if home_result is None:
+        return None
+    home_avg_gf, home_avg_ga, source_home = home_result
 
-    if use_local_away:
-        away_avg_gf = away_local.avg_goals_for
-        away_avg_ga = away_local.avg_goals_against
-        source_away = "local"
-    else:
-        ext = _find_external_stats(match.away_player, ext_player_stats)
-        if ext:
-            away_avg_gf = ext.avg_goals_for
-            away_avg_ga = ext.avg_goals_against
-            source_away = "external"
-        else:
-            away_avg_gf = 2.8
-            away_avg_ga = 2.5
-            source_away = "default"
+    away_result = await _resolve_player_stats(
+        session, match.away_player, ext_player_stats
+    )
+    if away_result is None:
+        return None
+    away_avg_gf, away_avg_ga, source_away = away_result
 
     home_expected = (home_avg_gf + away_avg_ga) / 2
     away_expected = (away_avg_gf + home_avg_ga) / 2

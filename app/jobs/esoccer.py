@@ -14,7 +14,7 @@ from telegram import client
 
 from infra.config import settings
 from infra.database import async_session
-from infra.models import PlayerLocalStats, Prediction
+from infra.models import PlayerMatch, Prediction
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +97,9 @@ async def send_predictions(window_minutes: int = 10) -> list[dict]:
                 continue
 
             pred = await generate_prediction(session, match)
+            if pred is None:
+                await session.rollback()
+                continue
             text = _format_prediction_message(pred)
 
             try:
@@ -217,7 +220,7 @@ async def update_results() -> list[dict]:
             pred.success = success
             pred.status = "done"
 
-            await _update_local_stats(session, matched)
+            await _save_match_results(session, matched, pred.match_key)
             logger.info(
                 "Resultado atualizado: %s %d-%d %s",
                 pred.match_key,
@@ -242,37 +245,26 @@ async def update_results() -> list[dict]:
     return updated
 
 
-async def _update_local_stats(session, result) -> None:
-    """Atualiza estatísticas locais dos dois jogadores após resultado."""
-    for player, gf, ga in [
-        (result.home_player, result.home_goals, result.away_goals),
-        (result.away_player, result.away_goals, result.home_goals),
+async def _save_match_results(session, result, match_key: str) -> None:
+    """Salva registro individual de partida para cada jogador."""
+    kickoff = result.kickoff_brt
+    if kickoff and kickoff.tzinfo is None:
+        kickoff = kickoff.replace(tzinfo=BRT)
+
+    for player, opponent, gf, ga in [
+        (result.home_player, result.away_player, result.home_goals, result.away_goals),
+        (result.away_player, result.home_player, result.away_goals, result.home_goals),
     ]:
-        stmt = select(PlayerLocalStats).where(PlayerLocalStats.player == player)
-        stats = (await session.execute(stmt)).scalar_one_or_none()
-
-        if not stats:
-            stats = PlayerLocalStats(
+        session.add(
+            PlayerMatch(
                 player=player,
-                matches_played=0,
-                goals_for=0,
-                goals_against=0,
-                wins=0,
-                draws=0,
-                losses=0,
+                opponent=opponent,
+                goals_for=gf,
+                goals_against=ga,
+                kickoff=kickoff,
+                match_key=match_key,
             )
-            session.add(stats)
-
-        stats.matches_played += 1
-        stats.goals_for += gf
-        stats.goals_against += ga
-
-        if gf > ga:
-            stats.wins += 1
-        elif gf == ga:
-            stats.draws += 1
-        else:
-            stats.losses += 1
+        )
 
 
 async def simulate_e2e(limit: int = 5) -> list[dict]:
@@ -287,7 +279,7 @@ async def simulate_e2e(limit: int = 5) -> list[dict]:
     if not chat_id:
         return []
 
-    results = results[:limit]
+    results = sorted(results, key=lambda r: r.kickoff_brt)[:limit]
     output: list[dict] = []
 
     async with async_session() as session:
@@ -309,6 +301,8 @@ async def simulate_e2e(limit: int = 5) -> list[dict]:
                 continue
 
             pred = await generate_prediction(session, match)
+            if pred is None:
+                continue
             text = _format_prediction_message(pred)
 
             try:
@@ -362,7 +356,7 @@ async def simulate_e2e(limit: int = 5) -> list[dict]:
             except Exception:
                 logger.exception("Simulate e2e: falha edição %s", match_key)
 
-            await _update_local_stats(session, r)
+            await _save_match_results(session, r, match_key)
             await session.commit()
 
             output.append(

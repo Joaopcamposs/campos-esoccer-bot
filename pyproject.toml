@@ -44,6 +44,9 @@ known-first-party = ["app", "infra"]
 [tool.hatch.build.targets.wheel]
 packages = ["app"]
 
+[tool.ty.environment]
+root = ["app"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
