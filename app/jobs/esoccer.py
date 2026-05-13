@@ -21,6 +21,8 @@ BRT = ZoneInfo("America/Sao_Paulo")
 
 
 def _format_brt_time(dt: datetime) -> str:
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=BRT)
     return dt.astimezone(BRT).strftime("%H:%M")
 
 
@@ -136,7 +138,10 @@ async def update_results() -> list[dict]:
         now_brt = datetime.now(BRT)
 
         for pred in pending:
-            if pred.kickoff_brt and pred.kickoff_brt.astimezone(BRT) > now_brt:
+            kickoff = pred.kickoff_brt
+            if kickoff and kickoff.tzinfo is None:
+                kickoff = kickoff.replace(tzinfo=BRT)
+            if kickoff and kickoff.astimezone(BRT) > now_brt:
                 logger.debug("Prediction %s ainda não iniciou, ignorando", pred.match_key)
                 continue
 
