@@ -9,6 +9,7 @@ from scheduler import register
 from scrapers.aceodds import fetch_upcoming_matches
 from scrapers.totalcorner import fetch_results
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from telegram import client
 
 from infra.config import settings
@@ -27,8 +28,10 @@ def _format_brt_time(dt: datetime) -> str:
 
 
 def _make_match_key(kickoff: datetime, home_player: str, away_player: str) -> str:
+    """Chave única por bloco de 15min — tolerante a variação de timezone entre ciclos."""
     kickoff_brt = kickoff.astimezone(BRT)
-    return f"{kickoff_brt.strftime('%Y%m%d_%H%M')}_{home_player}_{away_player}"
+    block = kickoff_brt.minute // 15
+    return f"{kickoff_brt.strftime('%Y%m%d_%H')}_{block}_{home_player}_{away_player}"
 
 
 def _format_prediction_message(pred) -> str:
@@ -72,11 +75,25 @@ async def send_predictions(window_minutes: int = 10) -> list[dict]:
         for match in matches:
             match_key = _make_match_key(match.kickoff, match.home_player, match.away_player)
 
-            existing = await session.execute(
-                select(Prediction).where(Prediction.match_key == match_key)
+            # Reserva o registro antes de enviar — impede envio duplicado mesmo com
+            # concorrência
+            prediction = Prediction(
+                match_key=match_key,
+                kickoff_brt=match.kickoff,
+                home_team=match.home_team,
+                home_player=match.home_player,
+                away_team=match.away_team,
+                away_player=match.away_player,
+                expected_total_goals=0.0,
+                over_line=0.0,
+                status="reserving",
             )
-            if existing.scalar_one_or_none():
-                logger.debug("Palpite já existe: %s", match_key)
+            session.add(prediction)
+            try:
+                await session.flush()
+            except IntegrityError:
+                await session.rollback()
+                logger.debug("Palpite já existe (UNIQUE): %s", match_key)
                 continue
 
             pred = await generate_prediction(session, match)
@@ -87,21 +104,13 @@ async def send_predictions(window_minutes: int = 10) -> list[dict]:
                 msg_id = result["result"]["message_id"]
             except Exception:
                 logger.exception("Falha ao enviar palpite: %s", match_key)
+                await session.rollback()
                 continue
 
-            prediction = Prediction(
-                match_key=match_key,
-                kickoff_brt=match.kickoff,
-                home_team=match.home_team,
-                home_player=match.home_player,
-                away_team=match.away_team,
-                away_player=match.away_player,
-                expected_total_goals=pred.expected_total_goals,
-                over_line=pred.over_line,
-                message_id=msg_id,
-                status="pending",
-            )
-            session.add(prediction)
+            prediction.expected_total_goals = pred.expected_total_goals
+            prediction.over_line = pred.over_line
+            prediction.message_id = msg_id
+            prediction.status = "pending"
             await session.commit()
             logger.info("Palpite salvo: %s msg_id=%d", match_key, msg_id)
 
@@ -136,6 +145,7 @@ async def update_results() -> list[dict]:
             return []
 
         now_brt = datetime.now(BRT)
+        used_results: set[int] = set()
 
         for pred in pending:
             kickoff = pred.kickoff_brt
@@ -145,25 +155,38 @@ async def update_results() -> list[dict]:
                 logger.debug("Prediction %s ainda não iniciou, ignorando", pred.match_key)
                 continue
 
+            pred_kickoff_brt = kickoff.astimezone(BRT) if kickoff else None
+
             matched = None
-            for r in results:
+            best_diff = float("inf")
+            for i, r in enumerate(results):
+                if i in used_results:
+                    continue
                 if (
-                    r.home_player.lower() == pred.home_player.lower()
-                    and r.away_player.lower() == pred.away_player.lower()
+                    r.home_player.lower() != pred.home_player.lower()
+                    or r.away_player.lower() != pred.away_player.lower()
                 ):
-                    matched = r
-                    break
+                    continue
+                if pred_kickoff_brt:
+                    r_kickoff = r.kickoff_brt
+                    if r_kickoff.tzinfo is None:
+                        r_kickoff = r_kickoff.replace(tzinfo=BRT)
+                    diff = abs((r_kickoff.astimezone(BRT) - pred_kickoff_brt).total_seconds())
+                else:
+                    diff = 0
+                if diff < best_diff:
+                    best_diff = diff
+                    matched = (i, r)
 
             if not matched:
                 continue
 
-            pred.home_goals = matched.home_goals
-            pred.away_goals = matched.away_goals
-            total = matched.total_goals
-            pred.success = total > pred.over_line
-            pred.status = "done"
+            result_idx, matched = matched
+            used_results.add(result_idx)
 
-            icon = "✅" if pred.success else "❌"
+            total = matched.total_goals
+            success = total > pred.over_line
+            icon = "✅" if success else "❌"
 
             try:
                 await client.api_call(
@@ -184,7 +207,15 @@ async def update_results() -> list[dict]:
                     ),
                 )
             except Exception:
-                logger.exception("Falha ao editar mensagem pred=%s", pred.id)
+                logger.exception(
+                    "Falha ao editar mensagem pred=%s — mantendo pending", pred.id
+                )
+                continue
+
+            pred.home_goals = matched.home_goals
+            pred.away_goals = matched.away_goals
+            pred.success = success
+            pred.status = "done"
 
             await _update_local_stats(session, matched)
             logger.info(

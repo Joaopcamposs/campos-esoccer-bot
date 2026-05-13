@@ -53,6 +53,9 @@ async def api_call(method: str, **kwargs: Any) -> dict[str, Any]:
                 if response.headers.get("content-type", "").startswith("application/json")
                 else response.text
             )
+            if isinstance(body, dict) and "not modified" in body.get("description", ""):
+                logger.debug("Telegram API %s → conteúdo idêntico, ignorando", method)
+                return body
             logger.error("Telegram API %s → %s: %s", method, response.status_code, body)
         response.raise_for_status()
         logger.debug("API %s → %s", method, response.status_code)

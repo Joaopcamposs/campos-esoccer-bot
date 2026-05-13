@@ -16,12 +16,23 @@ def test_format_brt_time():
 def test_make_match_key():
     dt = datetime(2026, 5, 12, 14, 0, tzinfo=BRT)
     key = _make_match_key(dt, "Grellz", "Simaponika")
-    assert key == "20260512_1400_Grellz_Simaponika"
+    # formato: YYYYMMDD_HH_bloco15min_home_away  (bloco = minuto // 15)
+    assert key == "20260512_14_0_Grellz_Simaponika"
 
 
-def test_make_match_key_unique():
+def test_make_match_key_same_block():
+    """Minutos no mesmo bloco de 15min geram a mesma key — deduplicação tolerante."""
     dt1 = datetime(2026, 5, 12, 14, 0, tzinfo=BRT)
-    dt2 = datetime(2026, 5, 12, 14, 12, tzinfo=BRT)
-    k1 = _make_match_key(dt1, "Grellz", "Simaponika")
-    k2 = _make_match_key(dt2, "Grellz", "Simaponika")
-    assert k1 != k2
+    dt2 = datetime(2026, 5, 12, 14, 8, tzinfo=BRT)
+    assert _make_match_key(dt1, "Grellz", "Simaponika") == _make_match_key(
+        dt2, "Grellz", "Simaponika"
+    )
+
+
+def test_make_match_key_different_block():
+    """Minutos em blocos distintos geram keys diferentes."""
+    dt1 = datetime(2026, 5, 12, 14, 0, tzinfo=BRT)
+    dt2 = datetime(2026, 5, 12, 14, 16, tzinfo=BRT)
+    assert _make_match_key(dt1, "Grellz", "Simaponika") != _make_match_key(
+        dt2, "Grellz", "Simaponika"
+    )
