@@ -47,6 +47,13 @@ async def api_call(method: str, **kwargs: Any) -> dict[str, Any]:
             logger.warning("Rate limit 429 em %s, retry em %ss", method, retry_after)
             await asyncio.sleep(retry_after)
             continue
+        if response.status_code >= 400:
+            body = (
+                response.json()
+                if response.headers.get("content-type", "").startswith("application/json")
+                else response.text
+            )
+            logger.error("Telegram API %s → %s: %s", method, response.status_code, body)
         response.raise_for_status()
         logger.debug("API %s → %s", method, response.status_code)
         return response.json()

@@ -38,9 +38,14 @@ async def lifespan(app: FastAPI):
     """Inicializa banco, inicia scheduler/polling e fecha conexões no shutdown."""
     global _polling_task
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    logger.info("Banco inicializado")
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        logger.info("Banco inicializado")
+    except Exception:
+        logger.warning(
+            "DB indisponível no startup — tabelas serão criadas na primeira conexão"
+        )
 
     start_all()
 

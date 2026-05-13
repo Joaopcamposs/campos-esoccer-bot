@@ -40,6 +40,8 @@ def mock_telegram():
     with patch("telegram.client.get_client") as mock_get:
         mock_client = AsyncMock()
         mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.headers = {"content-type": "application/json"}
         mock_response.json.return_value = {
             "ok": True,
             "result": {"message_id": 42},
