@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     webhook_path: str = "/webhook/telegram"
     telegram_polling: bool = True
     log_level: str = "INFO"
+    aceodds_timezone: str = "America/Sao_Paulo"
 
 
 settings = Settings()

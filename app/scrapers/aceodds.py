@@ -9,6 +9,8 @@ from zoneinfo import ZoneInfo
 import httpx
 from bs4 import BeautifulSoup
 
+from infra.config import settings
+
 logger = logging.getLogger(__name__)
 
 URL = (
@@ -17,6 +19,7 @@ URL = (
 )
 
 BRT = ZoneInfo("America/Sao_Paulo")
+ACEODDS_TZ = ZoneInfo(settings.aceodds_timezone)
 
 HEADERS = {
     "User-Agent": (
@@ -75,7 +78,7 @@ def _parse_date_header(text: str, fallback_date: datetime) -> datetime:
     if len(parts) == 3:
         try:
             day, month, year = parts
-            return datetime(int(year), int(month), int(day), tzinfo=BRT)
+            return datetime(int(year), int(month), int(day), tzinfo=ACEODDS_TZ)
         except ValueError, IndexError:
             pass
 
@@ -96,13 +99,16 @@ def _parse_match_text(text: str) -> tuple[str, str, str, str] | None:
 
 async def fetch_upcoming_matches(window_minutes: int = 5) -> list[Match]:
     """Busca jogos que começam nos próximos `window_minutes` minutos (BRT)."""
-    now = datetime.now(BRT)
-    cutoff = now + timedelta(minutes=window_minutes)
+    now_brt = datetime.now(BRT)
+    now_site = datetime.now(ACEODDS_TZ)
+    cutoff = now_site + timedelta(minutes=window_minutes)
 
     logger.info(
-        "Buscando jogos aceodds entre %s e %s",
-        now.strftime("%H:%M"),
+        "Buscando jogos aceodds entre %s e %s (site_tz=%s, brt=%s)",
+        now_site.strftime("%H:%M"),
         cutoff.strftime("%H:%M"),
+        settings.aceodds_timezone,
+        now_brt.strftime("%H:%M"),
     )
 
     async with httpx.AsyncClient(timeout=15.0, headers=HEADERS) as client:
@@ -116,16 +122,15 @@ async def fetch_upcoming_matches(window_minutes: int = 5) -> list[Match]:
         return []
 
     matches: list[Match] = []
-    current_date = now
+    current_date = now_site
 
     for row in table.find_all("tr"):
         cells = row.find_all("td")
 
-        # Header de data
         if len(cells) == 1:
             h2 = cells[0].find("h2")
             if h2:
-                current_date = _parse_date_header(h2.get_text(), now)
+                current_date = _parse_date_header(h2.get_text(), now_site)
             continue
 
         if len(cells) < 2:
@@ -136,9 +141,9 @@ async def fetch_upcoming_matches(window_minutes: int = 5) -> list[Match]:
             continue
 
         hour, minute = map(int, time_text.split(":"))
-        kickoff = current_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
+        kickoff_site = current_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
-        if kickoff < now or kickoff > cutoff:
+        if kickoff_site < now_site or kickoff_site > cutoff:
             continue
 
         link = cells[1].find("a")
@@ -150,9 +155,10 @@ async def fetch_upcoming_matches(window_minutes: int = 5) -> list[Match]:
             continue
 
         home_team, home_player, away_team, away_player = parsed
+        kickoff_brt = kickoff_site.astimezone(BRT)
         matches.append(
             Match(
-                kickoff=kickoff,
+                kickoff=kickoff_brt,
                 home_team=home_team,
                 home_player=home_player,
                 away_team=away_team,
