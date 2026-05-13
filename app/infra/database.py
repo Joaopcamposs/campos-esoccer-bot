@@ -3,6 +3,7 @@
 import ssl
 from collections.abc import AsyncGenerator
 
+from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from infra.config import settings
@@ -21,6 +22,14 @@ engine = create_async_engine(
     pool_pre_ping=True,
     connect_args=connect_args,
 )
+
+if settings.db_schema:
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def _set_search_path(dbapi_conn, connection_record):
+        cursor = dbapi_conn.cursor()
+        cursor.execute(f"SET search_path TO {settings.db_schema}, public")
+        cursor.close()
 
 async_session = async_sessionmaker(engine, expire_on_commit=False)
 

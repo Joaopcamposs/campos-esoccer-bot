@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 os.environ.setdefault("DATABASE_URL", "postgresql+asyncpg://test:test@localhost:1/test")
 os.environ.setdefault("TELEGRAM_BOT_TOKEN", "fake-token")
+os.environ["DB_SCHEMA"] = ""
 
 from infra.models import Base
 

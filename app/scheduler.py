@@ -31,6 +31,7 @@ def register(name: str, interval_seconds: float = 300):
 
 async def _run_loop(name: str, interval: float, fn: Job) -> None:
     """Loop interno que executa job no intervalo."""
+    await asyncio.sleep(interval)
     while True:
         try:
             await fn()

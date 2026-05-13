@@ -11,6 +11,8 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Any
 
+import sqlalchemy
+
 import jobs  # noqa: F401
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from routes import router as aux_routes
@@ -40,8 +42,12 @@ async def lifespan(app: FastAPI):
 
     try:
         async with engine.begin() as conn:
+            if settings.db_schema:
+                await conn.execute(
+                    sqlalchemy.text(f"CREATE SCHEMA IF NOT EXISTS {settings.db_schema}")
+                )
             await conn.run_sync(Base.metadata.create_all)
-        logger.info("Banco inicializado")
+        logger.info("Banco inicializado (schema=%s)", settings.db_schema or "public")
     except Exception:
         logger.warning(
             "DB indisponível no startup — tabelas serão criadas na primeira conexão"

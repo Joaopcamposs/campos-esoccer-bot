@@ -4,7 +4,10 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import BigInteger, Boolean, DateTime, Float, Integer, String, func
+from sqlalchemy import MetaData
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+from infra.config import settings
 
 
 def new_uuid7() -> str:
@@ -12,7 +15,7 @@ def new_uuid7() -> str:
 
 
 class Base(DeclarativeBase):
-    """Entidade base com campos padrão."""
+    metadata = MetaData(schema=settings.db_schema or None)
 
 
 class TimestampMixin:

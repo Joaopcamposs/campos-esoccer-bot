@@ -28,6 +28,7 @@ class Settings(BaseSettings):
     telegram_polling: bool = True
     log_level: str = "INFO"
     aceodds_timezone: str = "America/Sao_Paulo"
+    db_schema: str = "esoccer_bot"
 
 
 settings = Settings()
