@@ -11,9 +11,8 @@ import logging
 from contextlib import asynccontextmanager
 from typing import Any
 
-import sqlalchemy
-
 import jobs  # noqa: F401
+import sqlalchemy
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from routes import router as aux_routes
 from scheduler import start_all, stop_all

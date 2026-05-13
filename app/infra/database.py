@@ -31,6 +31,7 @@ if settings.db_schema:
         cursor.execute(f"SET search_path TO {settings.db_schema}, public")
         cursor.close()
 
+
 async_session = async_sessionmaker(engine, expire_on_commit=False)
 
 

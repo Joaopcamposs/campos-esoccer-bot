@@ -3,8 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, Float, Integer, String, func
-from sqlalchemy import MetaData
+from sqlalchemy import BigInteger, Boolean, DateTime, Float, Integer, MetaData, String, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from infra.config import settings

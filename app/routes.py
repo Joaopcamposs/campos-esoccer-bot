@@ -1,9 +1,16 @@
 """Rotas API — endpoints de negócio."""
 
+import re
+from datetime import datetime
 from typing import Any
+from zoneinfo import ZoneInfo
 
+import httpx
+from bs4 import BeautifulSoup
 from fastapi import APIRouter, Depends, HTTPException
 from jobs.esoccer import send_predictions, simulate_e2e, update_results
+from scrapers.aceodds import HEADERS as ACEODDS_HEADERS
+from scrapers.aceodds import URL as ACEODDS_URL
 from scrapers.aceodds import fetch_upcoming_matches
 from scrapers.totalcorner import fetch_goal_stats, fetch_player_stats, fetch_results
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -157,6 +164,104 @@ async def api_edit(
     if not result:
         raise HTTPException(404, "Message not found")
     return {"status": "edited"}
+
+
+@router.get("/debug/aceodds-raw")
+async def debug_aceodds_raw() -> dict[str, Any]:
+    """Retorna horários brutos do aceodds sem conversão — pra debug de timezone."""
+    async with httpx.AsyncClient(timeout=15.0, headers=ACEODDS_HEADERS) as client:
+        resp = await client.get(ACEODDS_URL)
+        resp.raise_for_status()
+
+    soup = BeautifulSoup(resp.text, "lxml")
+    table = soup.select_one("table.table")
+    if not table:
+        return {"error": "tabela não encontrada"}
+
+    rows = []
+    current_header = ""
+    for row in table.find_all("tr"):
+        cells = row.find_all("td")
+        if len(cells) == 1:
+            h2 = cells[0].find("h2")
+            if h2:
+                current_header = h2.get_text(strip=True)
+            continue
+        if len(cells) < 2:
+            continue
+        time_text = cells[0].get_text(strip=True)
+        if not re.match(r"^\d{1,2}:\d{2}$", time_text):
+            continue
+        link = cells[1].find("a")
+        match_text = link.get_text(strip=True) if link else cells[1].get_text(strip=True)
+        rows.append(
+            {
+                "date_header": current_header,
+                "time_raw": time_text,
+                "match": match_text,
+            }
+        )
+
+    now_utc = datetime.now(ZoneInfo("UTC")).strftime("%Y-%m-%d %H:%M:%S")
+    now_brt = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%Y-%m-%d %H:%M:%S")
+    now_est = datetime.now(ZoneInfo("America/New_York")).strftime("%Y-%m-%d %H:%M:%S")
+
+    return {
+        "server_now_utc": now_utc,
+        "server_now_brt": now_brt,
+        "server_now_est": now_est,
+        "total_rows": len(rows),
+        "rows": rows[:20],
+    }
+
+
+@router.get("/debug/totalcorner-raw")
+async def debug_totalcorner_raw() -> dict[str, Any]:
+    """Retorna horários brutos do totalcorner sem conversão — pra debug de timezone."""
+    from scrapers.totalcorner import BASE_URL
+    from scrapers.totalcorner import HEADERS as TC_HEADERS
+
+    async with httpx.AsyncClient(timeout=20.0, headers=TC_HEADERS) as client:
+        resp = await client.get(BASE_URL)
+        resp.raise_for_status()
+
+    soup = BeautifulSoup(resp.text, "lxml")
+    tables = soup.find_all("table", class_="background_table")
+    if not tables:
+        return {"error": "tabela de resultados não encontrada"}
+
+    table = tables[-1]
+    rows = []
+    for row in table.find_all("tr"):
+        cells = row.find_all("td")
+        if len(cells) < 5:
+            continue
+        date_text = cells[0].get_text(strip=True)
+        if not re.match(r"^\d{2}/\d{2}\s+\d{2}:\d{2}$", date_text):
+            continue
+        status = cells[1].get_text(strip=True)
+        home = cells[2].get_text(strip=True)
+        score = cells[3].get_text(strip=True)
+        away = cells[4].get_text(strip=True)
+        rows.append(
+            {
+                "datetime_raw": date_text,
+                "status": status,
+                "home": home,
+                "score": score,
+                "away": away,
+            }
+        )
+
+    now_utc = datetime.now(ZoneInfo("UTC")).strftime("%Y-%m-%d %H:%M:%S")
+    now_brt = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%Y-%m-%d %H:%M:%S")
+
+    return {
+        "server_now_utc": now_utc,
+        "server_now_brt": now_brt,
+        "total_rows": len(rows),
+        "rows": rows[:20],
+    }
 
 
 @router.post("/demo")

@@ -25,7 +25,8 @@ def _format_brt_time(dt: datetime) -> str:
 
 
 def _make_match_key(kickoff: datetime, home_player: str, away_player: str) -> str:
-    return f"{kickoff.strftime('%Y%m%d_%H%M')}_{home_player}_{away_player}"
+    kickoff_brt = kickoff.astimezone(BRT)
+    return f"{kickoff_brt.strftime('%Y%m%d_%H%M')}_{home_player}_{away_player}"
 
 
 def _format_prediction_message(pred) -> str:
@@ -132,7 +133,13 @@ async def update_results() -> list[dict]:
         if not pending:
             return []
 
+        now_brt = datetime.now(BRT)
+
         for pred in pending:
+            if pred.kickoff_brt and pred.kickoff_brt.astimezone(BRT) > now_brt:
+                logger.debug("Prediction %s ainda não iniciou, ignorando", pred.match_key)
+                continue
+
             matched = None
             for r in results:
                 if (
@@ -165,7 +172,7 @@ async def update_results() -> list[dict]:
                         f"{pred.away_player} ({pred.away_team})\n"
                         f"⚽️ Gols esperado: {pred.expected_total_goals:.2f}\n"
                         f"🥅 Over {pred.over_line} gols\n"
-                        f"🕒 {_format_brt_time(matched.kickoff_brt)}\n\n"
+                        f"🕒 {_format_brt_time(pred.kickoff_brt)}\n\n"
                         f"Resultado: {matched.home_goals} - {matched.away_goals} "
                         f"(total: {total})\n\n"
                         f"{icon}"

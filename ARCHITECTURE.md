@@ -106,8 +106,9 @@ tests/
 - **Fonte**: HTML server-side (sem JS)
 - **Tabela**: `<table class="table">` com rows `<tr>` contendo hora + link com nomes
 - **Formato nomes**: `Time (Player) x Time (Player)`
-- **Timezone**: BRT (America/Sao_Paulo)
+- **Timezone**: configurável via `ACEODDS_TIMEZONE` (aceodds adapta horários pelo IP do servidor)
 - **Sem cache** (dados mudam a cada minuto)
+- **Conversão**: horário do site (`ACEODDS_TZ`) → BRT (`America/Sao_Paulo`)
 
 ### totalcorner.py
 
@@ -116,8 +117,9 @@ tests/
   1. `stats_table[0]` — Player Statistics (MP, W/D/L, GF/GA, avg, points)
   2. `stats_table[1]` — Total Goals Statistics (MP, avg GF/GA, over 1.5–10.5 %)
   3. `background_table[-1]` — Schedule and Results (data, status, teams, placar)
-- **Cache**: HTML em memória, TTL 240s (4 min), compartilhado entre as 3 funções
-- **Timezone**: Europe/London (BST no verão = GMT+1) → convertido pra BRT
+- **Cache**: HTML em memória, TTL 30s, compartilhado entre as 3 funções
+- **Timezone**: configurável via `TOTALCORNER_TIMEZONE` (default `Europe/London`, BST no verão = GMT+1)
+- **Conversão**: horário do site (`SITE_TZ`) → BRT (`America/Sao_Paulo`)
 
 ## Motor de Palpites
 
@@ -157,6 +159,7 @@ SQLAlchemy 2.0 async com asyncpg. Pool: `pool_size=5`, `max_overflow=5`.
 | `predictions` | UUID7 | Palpites (match_key único, resultado, sucesso) |
 
 Tabelas criadas automaticamente no lifespan via `Base.metadata.create_all`.
+Schema isolado via `DB_SCHEMA` (default `esoccer_bot`) — permite multi-tenant no mesmo banco.
 
 ## Portas
 
@@ -189,3 +192,43 @@ Dependência flui para baixo. Nunca para cima.
 |------|------------|-------------------|
 | **Polling** | Dev local, sem URL pública | `true` |
 | **Webhook** | Produção, deploy com HTTPS | `false` |
+
+## Timezone
+
+Horários internos sempre em **BRT** (`America/Sao_Paulo`). Conversão na entrada:
+
+| Fonte | Var de ambiente | Default | Observação |
+|-------|----------------|---------|------------|
+| aceodds | `ACEODDS_TIMEZONE` | `America/Sao_Paulo` | Adapta pelo IP do servidor |
+| totalcorner | `TOTALCORNER_TIMEZONE` | `Europe/London` | BST (GMT+1) no verão |
+
+**Como calibrar** (após mudar servidor):
+1. Acessar `/api/debug/aceodds-raw` e `/api/debug/totalcorner-raw`
+2. Comparar `time_raw` dos jogos com `server_now_utc` / `server_now_brt`
+3. Ajustar env vars conforme timezone que o site retorna
+
+Pontos de conversão:
+- `aceodds.py`: `ACEODDS_TZ` → BRT no `kickoff` de cada `Match`
+- `totalcorner.py`: `SITE_TZ` → BRT no `kickoff_brt` de cada `MatchResult`
+- `esoccer.py`: `_make_match_key` força BRT, `_format_brt_time` força BRT
+- `update_results`: usa `pred.kickoff_brt` (original) na mensagem editada, nunca o horário do resultado
+
+## Proteções no update_results
+
+- Predictions com `kickoff_brt > agora` são ignoradas (jogo futuro)
+- Match por `home_player + away_player` (case-insensitive)
+- Horário da mensagem editada preserva o `kickoff_brt` original da prediction
+
+## Variáveis de Ambiente
+
+| Variável | Obrigatória | Default | Descrição |
+|----------|-------------|---------|-----------|
+| `TELEGRAM_BOT_TOKEN` | Sim | `""` | Token do bot |
+| `TELEGRAM_CHANNEL_ID` | Sim | `0` | ID do canal (começa com -100) |
+| `TELEGRAM_WEBHOOK_SECRET` | Não | `""` | Secret pra validar webhook |
+| `DATABASE_URL` | Sim | `postgresql+asyncpg://...` | URL do banco (aceita `postgresql://`, converte auto) |
+| `TELEGRAM_POLLING` | Não | `true` | `true`=dev local, `false`=prod webhook |
+| `LOG_LEVEL` | Não | `INFO` | Nível de log |
+| `ACEODDS_TIMEZONE` | Não | `America/Sao_Paulo` | Timezone dos horários do aceodds |
+| `TOTALCORNER_TIMEZONE` | Não | `Europe/London` | Timezone dos horários do totalcorner |
+| `DB_SCHEMA` | Não | `esoccer_bot` | Schema PostgreSQL (vazio=public) |

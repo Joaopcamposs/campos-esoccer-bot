@@ -10,6 +10,8 @@ from zoneinfo import ZoneInfo
 import httpx
 from bs4 import BeautifulSoup
 
+from infra.config import settings
+
 logger = logging.getLogger(__name__)
 
 BASE_URL = "https://www.totalcorner.com/league/view/12995/end/Esoccer-Battle-8-mins-play"
@@ -58,7 +60,7 @@ class PlayerStats:
 
 
 BRT = ZoneInfo("America/Sao_Paulo")
-SITE_TZ = ZoneInfo("Europe/London")
+SITE_TZ = ZoneInfo(settings.totalcorner_timezone)
 
 OVER_THRESHOLDS = [1.5, 2.5, 3.5, 4.5, 5.5, 6.5, 7.5, 8.5, 9.5, 10.5]
 
