@@ -62,12 +62,11 @@ async def api_pending(
 
 
 @router.get("/upcoming")
-async def api_upcoming(window: int = 10) -> dict[str, Any]:
-    """Jogos eSoccer Battle nos próximos N minutos (BRT)."""
-    matches = await fetch_upcoming_matches(window_minutes=window)
+async def api_upcoming() -> dict[str, Any]:
+    """Próximos jogos eSoccer Battle (tipmanager)."""
+    matches = await fetch_upcoming_matches()
     return {
         "count": len(matches),
-        "window_minutes": window,
         "matches": [m.to_dict() for m in matches],
     }
 
@@ -118,9 +117,9 @@ async def api_results(
 
 
 @router.post("/predictions/send")
-async def api_send_predictions(window: int = 10) -> dict[str, Any]:
+async def api_send_predictions() -> dict[str, Any]:
     """Força envio de palpites dos próximos jogos."""
-    sent = await send_predictions(window_minutes=window)
+    sent = await send_predictions()
     return {
         "sent_count": len(sent),
         "predictions": sent,

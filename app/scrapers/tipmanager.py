@@ -3,7 +3,7 @@
 import logging
 import re
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -197,25 +197,12 @@ async def _fetch_html() -> str:
     return resp.text
 
 
-async def fetch_upcoming_matches(window_minutes: int = 5) -> list[Match]:
-    """Busca jogos que começam nos próximos `window_minutes` minutos (BRT)."""
+async def fetch_upcoming_matches() -> list[Match]:
+    """Retorna todos os próximos jogos listados no tipmanager (até 10)."""
     html = await _fetch_html()
     upcoming, _ = _parse_tables(html)
-
-    now_brt = datetime.now(BRT)
-    cutoff = now_brt + timedelta(minutes=window_minutes)
-
-    filtered = [
-        m for m in upcoming
-        if now_brt <= m.kickoff <= cutoff
-    ]
-    logger.info(
-        "Tipmanager: %d jogos nos próximos %d min (de %d total upcoming)",
-        len(filtered),
-        window_minutes,
-        len(upcoming),
-    )
-    return filtered
+    logger.info("Tipmanager: %d próximos jogos", len(upcoming))
+    return upcoming
 
 
 async def fetch_results(finished_only: bool = True) -> list[MatchResult]:

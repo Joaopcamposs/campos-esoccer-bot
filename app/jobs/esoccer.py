@@ -54,13 +54,14 @@ def _format_prediction_message(pred) -> str:
     )
 
 
-async def send_predictions(window_minutes: int = 4) -> list[dict]:
+async def send_predictions() -> list[dict]:
     """
-    Busca jogos próximos, gera palpites e envia no Telegram. Retorna palpites enviados.
+    Busca todos os próximos jogos, gera palpites e envia no Telegram. Retorna palpites enviados.
+    Deduplicação via match_key UNIQUE no banco.
     """
-    matches = await fetch_upcoming_matches(window_minutes=window_minutes)
+    matches = await fetch_upcoming_matches()
     if not matches:
-        logger.info("Nenhum jogo nos próximos %d minutos", window_minutes)
+        logger.info("Nenhum jogo próximo encontrado")
         return []
 
     chat_id = settings.telegram_channel_id
