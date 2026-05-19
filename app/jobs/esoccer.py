@@ -6,8 +6,7 @@ from zoneinfo import ZoneInfo
 
 from prediction import generate_prediction
 from scheduler import register
-from scrapers.aceodds import fetch_upcoming_matches
-from scrapers.totalcorner import fetch_results
+from scrapers.tipmanager import fetch_upcoming_matches, fetch_results
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from telegram import client
@@ -27,11 +26,11 @@ def _format_brt_time(dt: datetime) -> str:
     return dt.astimezone(BRT).strftime("%H:%M")
 
 
-def _make_match_key(kickoff: datetime, home_player: str, away_player: str) -> str:
-    """Chave única por bloco de 15min — tolerante a variação de timezone entre ciclos."""
+def _make_match_key(
+    kickoff: datetime, home_player: str, home_team: str, away_player: str, away_team: str
+) -> str:
     kickoff_brt = kickoff.astimezone(BRT)
-    block = kickoff_brt.minute // 15
-    return f"{kickoff_brt.strftime('%Y%m%d_%H')}_{block}_{home_player}_{away_player}"
+    return f"{kickoff_brt.strftime('%Y%m%d_%H%M')}_{home_player}_{home_team}_{away_player}_{away_team}"
 
 
 def _format_prediction_message(pred) -> str:
@@ -55,7 +54,7 @@ def _format_prediction_message(pred) -> str:
     )
 
 
-async def send_predictions(window_minutes: int = 10) -> list[dict]:
+async def send_predictions(window_minutes: int = 4) -> list[dict]:
     """
     Busca jogos próximos, gera palpites e envia no Telegram. Retorna palpites enviados.
     """
@@ -73,7 +72,7 @@ async def send_predictions(window_minutes: int = 10) -> list[dict]:
 
     async with async_session() as session:
         for match in matches:
-            match_key = _make_match_key(match.kickoff, match.home_player, match.away_player)
+            match_key = _make_match_key(match.kickoff, match.home_player, match.home_team, match.away_player, match.away_team)
 
             # Reserva o registro antes de enviar — impede envio duplicado mesmo com
             # concorrência
@@ -148,17 +147,21 @@ async def update_results() -> list[dict]:
             return []
 
         now_brt = datetime.now(BRT)
+        match_duration_minutes = 12
         used_results: set[int] = set()
 
         for pred in pending:
             kickoff = pred.kickoff_brt
             if kickoff and kickoff.tzinfo is None:
                 kickoff = kickoff.replace(tzinfo=BRT)
-            if kickoff and kickoff.astimezone(BRT) > now_brt:
+            kickoff_brt = kickoff.astimezone(BRT) if kickoff else None
+            if kickoff_brt and kickoff_brt > now_brt:
                 logger.debug("Prediction %s ainda não iniciou, ignorando", pred.match_key)
                 continue
-
-            pred_kickoff_brt = kickoff.astimezone(BRT) if kickoff else None
+            elapsed = (now_brt - kickoff_brt).total_seconds() if kickoff_brt else float("inf")
+            if elapsed < match_duration_minutes * 60:
+                logger.debug("Prediction %s ainda em andamento, ignorando", pred.match_key)
+                continue
 
             matched = None
             best_diff = float("inf")
@@ -170,11 +173,11 @@ async def update_results() -> list[dict]:
                     or r.away_player.lower() != pred.away_player.lower()
                 ):
                     continue
-                if pred_kickoff_brt:
+                if kickoff_brt:
                     r_kickoff = r.kickoff_brt
                     if r_kickoff.tzinfo is None:
                         r_kickoff = r_kickoff.replace(tzinfo=BRT)
-                    diff = abs((r_kickoff.astimezone(BRT) - pred_kickoff_brt).total_seconds())
+                    diff = abs((r_kickoff.astimezone(BRT) - kickoff_brt).total_seconds())
                 else:
                     diff = 0
                 if diff < best_diff:
@@ -273,7 +276,7 @@ async def simulate_e2e(limit: int = 5) -> list[dict]:
     if not results:
         return []
 
-    from scrapers.aceodds import Match
+    from scrapers.tipmanager import Match
 
     chat_id = settings.telegram_channel_id
     if not chat_id:
@@ -292,7 +295,7 @@ async def simulate_e2e(limit: int = 5) -> list[dict]:
                 away_player=r.away_player,
             )
 
-            match_key = _make_match_key(r.kickoff_brt, r.home_player, r.away_player)
+            match_key = _make_match_key(r.kickoff_brt, r.home_player, r.home_team, r.away_player, r.away_team)
 
             existing = await session.execute(
                 select(Prediction).where(Prediction.match_key == match_key)

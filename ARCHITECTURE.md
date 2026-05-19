@@ -3,7 +3,7 @@
 ## Visão Geral
 
 Bot automatizado para palpites eSoccer Battle 8 minutos.
-Combina FastAPI (HTTP/API) + scraping (aceodds, totalcorner) + motor de palpites + Telegram Bot.
+Combina FastAPI (HTTP/API) + scraping (tipmanager, totalcorner) + motor de palpites + Telegram Bot.
 Projetado para rodar em **256MB RAM**.
 
 ```
@@ -16,9 +16,9 @@ Projetado para rodar em **256MB RAM**.
 │  └────────────┘  └───────┬────────┘           │                     │
 │                          │                    │                      │
 │  ┌───────────────────────▼────────────────────▼──────────────┐      │
-│  │                    Scrapers (cache 4min)                   │      │
-│  │  aceodds.py ─── próximos jogos                            │      │
-│  │  totalcorner.py ─── stats + over% + resultados            │      │
+│  │                    Scrapers                                │      │
+│  │  tipmanager.py ─── próximos jogos + resultados            │      │
+│  │  totalcorner.py ─── stats + over% (cache 30s)             │      │
 │  └───────────────────────┬───────────────────────────────────┘      │
 │                          │                                           │
 │  ┌───────────────────────▼───────────────────────────────────┐      │
@@ -45,7 +45,7 @@ Projetado para rodar em **256MB RAM**.
 
 ```
 1. fetch_upcoming_matches(10min)
-   └→ aceodds: HTML → lista de Match(kickoff, teams, players)
+   └→ tipmanager: HTML → lista de Match(kickoff, teams, players)
 
 2. Para cada match (deduplicação via match_key):
    └→ generate_prediction(session, match)
@@ -57,8 +57,8 @@ Projetado para rodar em **256MB RAM**.
 3. send_message(chat_id, texto formatado)
    └→ Prediction salvo: status=pending, message_id=X
 
-4. fetch_results(finished_only=True)
-   └→ totalcorner: resultados das últimas 48h
+4. fetch_results()
+   └→ tipmanager: resultados finalizados
 
 5. Para cada Prediction pendente com resultado:
    └→ editMessageText com resultado + ✅/❌
@@ -76,8 +76,8 @@ app/
   prediction.py            → Motor de palpites (local vs external vs default)
   scrapers/
     __init__.py
-    aceodds.py             → Scrap próximos jogos (HTML server-side)
-    totalcorner.py         → Scrap stats, over%, resultados (cache 4min)
+    tipmanager.py          → Scrap próximos jogos + resultados (fonte única)
+    totalcorner.py         → Scrap stats, over% (cache 30s)
   jobs/
     __init__.py            → Registro de todos os jobs
     esoccer.py             → Job principal (ciclo completo)
@@ -92,8 +92,8 @@ app/
     polling.py             → Long polling para dev local
     service.py             → Envio/edição com persistência + status
 tests/
-  test_aceodds.py          → Parsing HTML aceodds + filtro por janela
-  test_totalcorner.py      → Parsing stats/goals/results + cache
+  test_tipmanager.py       → Parsing HTML tipmanager + filtro por janela
+  test_totalcorner.py      → Parsing stats/goals + cache
   test_prediction.py       → Motor de palpites (external/default)
   test_esoccer_job.py      → Formatação e match_key
   test_*.py                → Testes base (handler, service, endpoints, etc)
@@ -101,25 +101,25 @@ tests/
 
 ## Scrapers
 
-### aceodds.py
+### tipmanager.py
 
-- **Fonte**: HTML server-side (sem JS)
-- **Tabela**: `<table class="table">` com rows `<tr>` contendo hora + link com nomes
-- **Formato nomes**: `Time (Player) x Time (Player)`
-- **Timezone**: configurável via `ACEODDS_TIMEZONE` (aceodds adapta horários pelo IP do servidor)
+- **Fonte**: `tipmanager.net/pt/sports/e-soccer/leagues/1/battle`
+- **2 tabelas** na página:
+  1. Tabela 1 — Próximos jogos (data, jogadores, times)
+  2. Tabela 2 — Resultados finalizados (data, jogadores, times, placar)
 - **Sem cache** (dados mudam a cada minuto)
-- **Conversão**: horário do site (`ACEODDS_TZ`) → BRT (`America/Sao_Paulo`)
+- **Timezone**: horários vêm em UTC, convertidos para BRT
+- **Parsing**: `aria-label` dos links contém "Player - Team - Clique..."
+- **Formato data**: `DD/MM/YYYY, HH:MM` (UTC)
 
 ### totalcorner.py
 
 - **Fonte**: HTML server-side
-- **3 tabelas** extraídas de uma única página:
+- **2 tabelas** extraídas (stats apenas, resultados agora vêm do tipmanager):
   1. `stats_table[0]` — Player Statistics (MP, W/D/L, GF/GA, avg, points)
   2. `stats_table[1]` — Total Goals Statistics (MP, avg GF/GA, over 1.5–10.5 %)
-  3. `background_table[-1]` — Schedule and Results (data, status, teams, placar)
-- **Cache**: HTML em memória, TTL 30s, compartilhado entre as 3 funções
+- **Cache**: HTML em memória, TTL 30s, compartilhado entre as funções
 - **Timezone**: configurável via `TOTALCORNER_TIMEZONE` (default `Europe/London`, BST no verão = GMT+1)
-- **Conversão**: horário do site (`SITE_TZ`) → BRT (`America/Sao_Paulo`)
 
 ## Motor de Palpites
 
@@ -197,19 +197,18 @@ Dependência flui para baixo. Nunca para cima.
 
 Horários internos sempre em **BRT** (`America/Sao_Paulo`). Conversão na entrada:
 
-| Fonte | Var de ambiente | Default | Observação |
-|-------|----------------|---------|------------|
-| aceodds | `ACEODDS_TIMEZONE` | `America/Sao_Paulo` | Adapta pelo IP do servidor |
-| totalcorner | `TOTALCORNER_TIMEZONE` | `Europe/London` | BST (GMT+1) no verão |
+| Fonte | Timezone origem | Observação |
+|-------|----------------|------------|
+| tipmanager | UTC | Horários no HTML são UTC, convertidos para BRT |
+| totalcorner | `TOTALCORNER_TIMEZONE` (default `Europe/London`) | BST (GMT+1) no verão |
 
-**Como calibrar** (após mudar servidor):
-1. Acessar `/api/debug/aceodds-raw` e `/api/debug/totalcorner-raw`
-2. Comparar `time_raw` dos jogos com `server_now_utc` / `server_now_brt`
-3. Ajustar env vars conforme timezone que o site retorna
+**Como calibrar**:
+1. Acessar `/api/debug/tipmanager-raw`
+2. Comparar horários com `server_now_brt`
 
 Pontos de conversão:
-- `aceodds.py`: `ACEODDS_TZ` → BRT no `kickoff` de cada `Match`
-- `totalcorner.py`: `SITE_TZ` → BRT no `kickoff_brt` de cada `MatchResult`
+- `tipmanager.py`: UTC → BRT no `kickoff` de cada `Match` e `MatchResult`
+- `totalcorner.py`: `SITE_TZ` → BRT (usado apenas para stats externas)
 - `esoccer.py`: `_make_match_key` força BRT, `_format_brt_time` força BRT
 - `update_results`: usa `pred.kickoff_brt` (original) na mensagem editada, nunca o horário do resultado
 
@@ -229,6 +228,5 @@ Pontos de conversão:
 | `DATABASE_URL` | Sim | `postgresql+asyncpg://...` | URL do banco (aceita `postgresql://`, converte auto) |
 | `TELEGRAM_POLLING` | Não | `true` | `true`=dev local, `false`=prod webhook |
 | `LOG_LEVEL` | Não | `INFO` | Nível de log |
-| `ACEODDS_TIMEZONE` | Não | `America/Sao_Paulo` | Timezone dos horários do aceodds |
 | `TOTALCORNER_TIMEZONE` | Não | `Europe/London` | Timezone dos horários do totalcorner |
 | `DB_SCHEMA` | Não | `esoccer_bot` | Schema PostgreSQL (vazio=public) |

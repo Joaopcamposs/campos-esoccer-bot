@@ -2,11 +2,10 @@
 
 O bot é executado a cada 4 minutos.
 
-- Scrap de quais são os confrontos nos próximos 10 minutos em: https://www.aceodds.com/pt/bet365-transmissao-ao-vivo/futebol/e-soccer-battle-8-minutos-de-jogo.html
+- Scrap de quais são os confrontos nos próximos 10 minutos e resultados finalizados em: https://tipmanager.net/pt/sports/e-soccer/leagues/1/battle
 - Scrap cacheado em: https://www.totalcorner.com/league/view/12995/end/Esoccer-Battle-8-mins-play
     - Estatisticas de jogadores
     - Estatisticas de gols e porcentagens over
-    - Resultados dos ultimos 48h
 - Gerar palpite sobre o jogo:
     - caso tenha mais de 20 jogos de amostragem do jogador, use os dados consolidados nesse range
     - caso tenha menos de 20 jogos de amostragem do jogador, use os dados consolidados externos no range completo
@@ -41,4 +40,3 @@ apos editar mensagem, adicionar no final:
 ```
 f"/n/n ✅ ou ❌"
 ```
-

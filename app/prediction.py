@@ -3,7 +3,7 @@
 import logging
 from dataclasses import dataclass
 
-from scrapers.aceodds import Match
+from scrapers.tipmanager import Match
 from scrapers.totalcorner import (
     PlayerGoalStats,
     PlayerStats,

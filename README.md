@@ -41,12 +41,12 @@ curl "http://localhost:8011/api/results"
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Ciclo a cada 4 minutos                       │
 │                                                                 │
-│  1. Scrap aceodds ──→ jogos próximos 10 min                    │
-│  2. Scrap totalcorner (cache 4min) ──→ stats + over% + results │
+│  1. Scrap tipmanager ──→ jogos próximos 10 min                  │
+│  2. Scrap totalcorner (cache 30s) ──→ stats + over%            │
 │  3. Motor de palpites ──→ expected goals + linha over           │
 │  4. Envia no Telegram ──→ salva Prediction (match_key único)   │
-│  5. Consulta resultados ──→ edita mensagem com ✅/❌            │
-│  6. Atualiza PlayerLocalStats ──→ alimenta dados locais        │
+│  5. Scrap tipmanager ──→ resultados finalizados                 │
+│  6. Edita mensagem com ✅/❌ + atualiza PlayerMatch            │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -54,9 +54,9 @@ curl "http://localhost:8011/api/results"
 
 | Fonte | URL | Dados |
 |-------|-----|-------|
-| **aceodds** | `aceodds.com/.../e-soccer-battle-8-minutos-de-jogo.html` | Próximos jogos (hora, times, jogadores) |
-| **totalcorner** | `totalcorner.com/league/view/12995/end/...` | Stats (W/D/L, GF/GA), over% (1.5–10.5), resultados 48h |
-| **banco local** | `player_local_stats` | Stats acumuladas dos jogadores (atualizado a cada resultado) |
+| **tipmanager** | `tipmanager.net/pt/sports/e-soccer/leagues/1/battle` | Próximos jogos + resultados finalizados (fonte única) |
+| **totalcorner** | `totalcorner.com/league/view/12995/end/...` | Stats (W/D/L, GF/GA), over% (1.5–10.5) |
+| **banco local** | `player_match` | Histórico individual por jogador (atualizado a cada resultado) |
 
 ### Motor de palpites
 
@@ -106,8 +106,8 @@ app/
   scheduler.py             → Scheduler asyncio para jobs periódicos
   prediction.py            → Motor de palpites (cruza dados locais/externos)
   scrapers/
-    aceodds.py             → Scrap próximos jogos
-    totalcorner.py         → Scrap stats, over%, resultados (cache 4min)
+    tipmanager.py          → Scrap próximos jogos + resultados (fonte única)
+    totalcorner.py         → Scrap stats, over% (cache 30s)
   jobs/
     esoccer.py             → Job principal (ciclo completo a cada 4min)
     example.py             → Job modelo (heartbeat)
@@ -131,7 +131,7 @@ tests/                     → Testes unitários (SQLite em memória)
 | `GET` | `/api/upcoming?window=10` | Próximos jogos eSoccer (BRT) |
 | `GET` | `/api/player-stats?player=Grellz` | Stats consolidadas (totalcorner) |
 | `GET` | `/api/goal-stats?player=Grellz` | Over% por jogador (totalcorner) |
-| `GET` | `/api/results?player=Grellz&finished_only=true` | Resultados recentes |
+| `GET` | `/api/results?player=Grellz` | Resultados recentes (tipmanager) |
 | `POST` | `/api/send` | Envia mensagem ao canal |
 | `PUT` | `/api/edit` | Edita mensagem por `reference_key` |
 | `GET` | `/api/pending` | Mensagens pendentes |
